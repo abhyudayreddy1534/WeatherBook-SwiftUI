@@ -8,16 +8,13 @@
 import Foundation
 import CoreLocation
 
-protocol WeatherManagerDelegate {
-    func didUpdateWeather(_ weatherManager:WeatherManager, weather: WeatherModel)
-    func didFailWithError(error: Error)
-}
-
-struct WeatherManager {
+class WeatherManager: ObservableObject {
     let weatherURL  = "https://api.openweathermap.org/data/2.5/weather?appid=7cf39db705583a23dd1c9b188bebb313&units=metric"
     
-    var delegate: WeatherManagerDelegate?
-    
+    @Published var city = ""
+    @Published var imageName = ""
+    @Published var tempString = ""
+        
     func fetchWeather(cityName: String) {
         let urlString = "\(weatherURL)&q=\(cityName)"
         print(urlString)
@@ -37,13 +34,16 @@ struct WeatherManager {
             let task = session.dataTask(with: url) { data, response, error in
                 if error != nil {
                     print(error!)
-                    self.delegate?.didFailWithError(error: error!)
                     return
                 }
                 
                 if let safeData = data {
-                    if let weather = self.parseJSON(data: safeData) {
-                        self.delegate?.didUpdateWeather(self, weather: weather)
+                    if case let (image?,temp?,city?) = self.parseJSON(data: safeData) {
+                        DispatchQueue.main.async {
+                            self.city = city
+                            self.tempString = temp
+                            self.imageName = image
+                        }
                         
                     }
                 }
@@ -54,24 +54,45 @@ struct WeatherManager {
         
     }
     
-    func parseJSON(data: Data?) -> WeatherModel? {
+    func parseJSON(data: Data?) -> (String, String, String) {
         let decoder = JSONDecoder()
         do {
             let decodedJSON = try decoder.decode(WeatherData.self, from: data!)
+            print(decodedJSON)
             let id = decodedJSON.weather[0].id
             let temp = decodedJSON.main.temp
             let name = decodedJSON.name
-            
-            let weather = WeatherModel(conditionID: id, cityName: name, temperature: temp)
-            
-            return weather
+                        
+            return (getConditionName(conditionID: id), String(format: "%.1f", temp), name)
         }
         catch {
             print(error)
-            delegate?.didFailWithError(error: error)
-            return nil
+            return ("","","")
         }
-        return nil
+        return ("","","")
+    }
+    
+    func getConditionName(conditionID: Int) -> String {
+       return {
+           switch conditionID {
+           case 200...232:
+               return "cloud.bolt"
+           case 300...321:
+               return "cloud.drizzle"
+           case 500...531:
+               return "cloud.rain"
+           case 600...622:
+               return "cloud.snow"
+           case 700...781:
+               return "cloud.fog"
+           case 800:
+               return "sun.max"
+           case 801...804:
+               return "cloud.bolt"
+           default:
+               return "cloud"
+           }
+       }()
     }
     
 }
